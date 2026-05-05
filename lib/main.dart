@@ -10,16 +10,8 @@ void main() async {
   if (storage.hasActiveSession) {
     final profileId = storage.getActiveProfileId()!;
     final profile = storage.getProfile(profileId);
-    final endTime = storage.getSessionEndTime();
 
-    // Don't resume a session whose timer already expired while the phone was off.
-    if (endTime != null && DateTime.now().isAfter(endTime)) {
-      await storage.clearActiveSession();
-      // In DPC mode, also lift quiet mode since the timed session has ended.
-      if (storage.dpcModeEnabled) await BlockingService.dpcSetQuietMode(false);
-    } else if (storage.dpcModeEnabled) {
-      // DPC mode: re-arm quiet mode (the work profile may have been re-enabled
-      // while the phone was off or the app was killed).
+    if (storage.dpcModeEnabled) {
       await BlockingService.dpcSetQuietMode(true);
     } else if (profile != null && profile.blockedPackages.isNotEmpty) {
       await BlockingService.startBlocking(profile.blockedPackages);

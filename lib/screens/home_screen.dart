@@ -19,9 +19,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isBlocking = false;
   Profile? _activeProfile;
-  DateTime? _sessionEndTime;
   bool _nfcListening = false;
-  Timer? _ticker;
 
   @override
   void initState() {
@@ -30,12 +28,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _syncState();
     _checkOnboarding();
     _checkPendingNfcTag();
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tickTimer());
   }
 
   @override
   void dispose() {
-    _ticker?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -48,16 +44,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  // Fires every second while a timed session is active.
-  void _tickTimer() {
-    if (!_isBlocking || _sessionEndTime == null) return;
-    if (DateTime.now().isAfter(_sessionEndTime!)) {
-      _stopBlocking();
-    } else {
-      setState(() {});
-    }
-  }
-
   Future<void> _syncState() async {
     final bool blocking;
     if (widget.storage.dpcModeEnabled) {
@@ -67,12 +53,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     final profileId = widget.storage.getActiveProfileId();
     final profile = profileId != null ? widget.storage.getProfile(profileId) : null;
-    final endTime = widget.storage.getSessionEndTime();
     if (!mounted) return;
     setState(() {
       _isBlocking = blocking;
       _activeProfile = profile;
-      _sessionEndTime = endTime;
     });
   }
 
@@ -123,8 +107,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  // Tap = toggle. If this profile is active, stop. Otherwise ask for duration
-  // then start. Supports replacing an active session with a different profile.
+  // Tap = toggle. If this profile is active, stop. Otherwise start blocking.
   Future<void> _toggle(Profile profile) async {
     if (_isBlocking && _activeProfile?.id == profile.id) {
       await _stopBlocking();
@@ -133,12 +116,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _showSnack('Add apps to this profile before blocking');
         return;
       }
-      final choice = await _pickDuration();
-      if (choice == null) return; // user cancelled
       final ok = await _startBlocking(profile);
       if (!ok) return;
-      final duration = choice == Duration.zero ? null : choice;
-      await widget.storage.setActiveSession(profile.id, duration: duration);
+      await widget.storage.setActiveSession(profile.id);
       await _syncState();
     }
   }
@@ -168,14 +148,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     await widget.storage.clearActiveSession();
     await _syncState();
-  }
-
-  // Returns the chosen Duration, Duration.zero for "no limit", or null if cancelled.
-  Future<Duration?> _pickDuration() {
-    return showDialog<Duration>(
-      context: context,
-      builder: (_) => const _DurationPickerDialog(),
-    );
   }
 
   void _showSnack(String msg) {
@@ -210,7 +182,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _SessionBanner(
             isBlocking: _isBlocking,
             activeProfile: _activeProfile,
-            sessionEndTime: _sessionEndTime,
             onStop: _activeProfile != null ? () => _stopBlocking() : null,
           ),
           Expanded(
@@ -336,39 +307,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
-// ── Duration picker ──────────────────────────────────────────────────────────
-
-class _DurationPickerDialog extends StatelessWidget {
-  const _DurationPickerDialog();
-
-  @override
-  Widget build(BuildContext context) {
-    const options = [
-      (Duration(minutes: 15), '15 min'),
-      (Duration(minutes: 25), '25 min  —  Pomodoro'),
-      (Duration(minutes: 45), '45 min'),
-      (Duration(hours: 1), '1 hour'),
-      (Duration(hours: 2), '2 hours'),
-      (Duration.zero, 'No time limit'),
-    ];
-    return SimpleDialog(
-      title: const Text('Block for how long?'),
-      children: [
-        for (final (dur, label) in options)
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop(dur),
-            child: Text(label),
-          ),
-        const Divider(height: 8),
-        SimpleDialogOption(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-        ),
-      ],
-    );
-  }
-}
-
 // ── NFC write modal ──────────────────────────────────────────────────────────
 
 class _NfcWriteDialog extends StatelessWidget {
@@ -402,34 +340,19 @@ class _NfcWriteDialog extends StatelessWidget {
 class _SessionBanner extends StatelessWidget {
   final bool isBlocking;
   final Profile? activeProfile;
-  final DateTime? sessionEndTime;
   final VoidCallback? onStop;
 
   const _SessionBanner({
     required this.isBlocking,
     required this.activeProfile,
-    required this.sessionEndTime,
     required this.onStop,
   });
-
-  String _countdown() {
-    if (sessionEndTime == null) return '';
-    final remaining = sessionEndTime!.difference(DateTime.now());
-    if (remaining.isNegative) return '';
-    final h = remaining.inHours;
-    final m = remaining.inMinutes % 60;
-    final s = remaining.inSeconds % 60;
-    if (h > 0) {
-      return ' — $h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-    }
-    return ' — $m:${s.toString().padLeft(2, '0')}';
-  }
 
   @override
   Widget build(BuildContext context) {
     if (!isBlocking) return const SizedBox.shrink();
     final name = activeProfile?.name ?? '';
-    final label = name.isNotEmpty ? '$name${_countdown()}' : 'Blocking active';
+    final label = name.isNotEmpty ? name : 'Blocking active';
     return Container(
       color: Theme.of(context).colorScheme.primary,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

@@ -7,7 +7,6 @@ import '../models/profile.dart';
 class StorageService {
   static const _profilesKey = 'profiles';
   static const _activeProfileIdKey = 'active_profile_id';
-  static const _sessionEndTimeKey = 'session_end_time';
   static const _dpcModeKey = 'dpc_mode';
 
   final SharedPreferences _prefs;
@@ -56,26 +55,12 @@ class StorageService {
 
   String? getActiveProfileId() => _prefs.getString(_activeProfileIdKey);
 
-  // [duration] null means no time limit.
-  Future<void> setActiveSession(String profileId, {Duration? duration}) async {
+  Future<void> setActiveSession(String profileId) async {
     await _prefs.setString(_activeProfileIdKey, profileId);
-    if (duration != null) {
-      final endTime = DateTime.now().add(duration);
-      await _prefs.setString(_sessionEndTimeKey, endTime.toIso8601String());
-    } else {
-      await _prefs.remove(_sessionEndTimeKey);
-    }
-  }
-
-  DateTime? getSessionEndTime() {
-    final raw = _prefs.getString(_sessionEndTimeKey);
-    if (raw == null) return null;
-    return DateTime.tryParse(raw);
   }
 
   Future<void> clearActiveSession() async {
     await _prefs.remove(_activeProfileIdKey);
-    await _prefs.remove(_sessionEndTimeKey);
   }
 
   bool get hasActiveSession => getActiveProfileId() != null;
