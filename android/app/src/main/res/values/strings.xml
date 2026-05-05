@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lockout</string>
+    <string name="accessibility_service_description">Lockout watches for blocked apps coming to the foreground and immediately returns you to the home screen. No data is collected or transmitted — all processing happens on-device.</string>
+</resources>
