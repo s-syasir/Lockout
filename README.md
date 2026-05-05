@@ -2,7 +2,7 @@
 
 Open-source NFC-triggered app blocker for Android. No Play Services required. Works on GrapheneOS, CalyxOS, and microG.
 
-**Tap an NFC tag → your distracting apps are blocked until you tap it again (or a timer runs out).**
+**Tap an NFC tag → your distracting apps are blocked until you tap it again.**
 
 ---
 
@@ -11,7 +11,6 @@ Open-source NFC-triggered app blocker for Android. No Play Services required. Wo
 | | |
 |---|---|
 | **NFC tag trigger** | Write a profile to a cheap NTAG213 tag (~$0.50). Tap once to start blocking, tap again to stop. |
-| **Timed sessions** | Block for 15 min, 25 min (Pomodoro), 45 min, 1 hr, 2 hrs, or no time limit. |
 | **Multiple profiles** | Focus, Bedtime, Work — each with its own app list. |
 | **No internet permission** | Ever. No analytics, no telemetry, no crash reporting. Declared in the manifest and intentionally permanent. |
 | **No Google Play Services** | Pure AOSP. Works on de-Googled ROMs. |
@@ -61,6 +60,13 @@ flutter run           # debug on connected device
 flutter build apk     # release APK (unsigned, debug key)
 ```
 
+Or use the included scripts (require a connected device via ADB):
+
+```bash
+./run-debug.sh        # flutter run (debug, live reload)
+./run-install.sh      # build release APK + adb install -r
+```
+
 No Play Store signing config needed for local development.
 
 ---
@@ -69,7 +75,7 @@ No Play Store signing config needed for local development.
 
 ```
 lib/
-  main.dart                       startup, expired-session guard, session resume
+  main.dart                       startup, session resume
   models/
     profile.dart                  Profile model + JSON serialisation
     app_info.dart                 AppInfo (packageName, appName)
@@ -78,7 +84,7 @@ lib/
     blocking_service.dart         MethodChannel bridge to native layer
     nfc_service.dart              flutter_nfc_kit read/write wrapper
   screens/
-    home_screen.dart              profile list, session banner + countdown, NFC FAB
+    home_screen.dart              profile list, session banner, NFC FAB
     profile_edit_screen.dart      create/edit profile, searchable app picker, lazy icons
     onboarding_screen.dart        first-run Accessibility permission walkthrough
     settings_screen.dart          permission status, about, privacy note
