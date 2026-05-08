@@ -10,7 +10,8 @@ Open-source NFC-triggered app blocker for Android. No Play Services required. Wo
 
 | | |
 |---|---|
-| **NFC tag trigger** | Write a profile to a cheap NTAG213 tag (~$0.50). Tap once to start blocking, tap again to stop. |
+| **NFC tag trigger** | Write a profile to a cheap NTAG213 tag (~$0.50). Tap once to start blocking, tap again to stop. **Stopping requires the NFC tag** — there is no in-app stop button. |
+| **Notification suppression** | Notifications from blocked apps are silently cancelled while a session is active. Requires Notification Access permission (optional, enable via Settings). |
 | **Multiple profiles** | Focus, Bedtime, Work — each with its own app list. |
 | **No internet permission** | Ever. No analytics, no telemetry, no crash reporting. Declared in the manifest and intentionally permanent. |
 | **No Google Play Services** | Pure AOSP. Works on de-Googled ROMs. |
@@ -47,8 +48,9 @@ Tag payload: `lockout:profile:<uuid>` as an NDEF TextRecord. Fits any NTAG213 ta
 ## Requirements
 
 - Android 8.0+ (API 26)
-- NFC hardware *(optional — profiles can be started manually by tapping them in the app)*
+- NFC hardware *(optional — profiles can be started manually by tapping them in the app; stopping always requires NFC)*
 - Accessibility Service permission *(one-time, guided on first launch)*
+- Notification Access permission *(optional — suppresses notifications from blocked apps; enable via Settings → Notification Access)*
 
 ---
 
@@ -64,8 +66,10 @@ Or use the included scripts (require a connected device via ADB):
 
 ```bash
 ./run-debug.sh        # flutter run (debug, live reload)
-./run-install.sh      # build release APK + adb install -r
+./run-install.sh      # build release APK + uninstall old + fresh install
 ```
+
+> **Note:** `run-install.sh` does a full uninstall before installing. This wipes app data (profiles) on the device. Re-create your profiles and re-write your NFC tags after each install.
 
 No Play Store signing config needed for local development.
 
@@ -90,10 +94,11 @@ lib/
     settings_screen.dart          permission status, about, privacy note
 
 android/…/kotlin/com/lockout/app/
-  MainActivity.kt                 NFC intent dispatch, FlutterEngine setup
-  BlockingChannel.kt              MethodChannel handler, app list, icon fetch, native prefs
-  BlockingService.kt              AccessibilityService — the actual blocking core
-  LockoutAdminReceiver.kt         DeviceAdminReceiver for Work Profile provisioning
+  MainActivity.kt                     NFC intent dispatch, FlutterEngine setup
+  BlockingChannel.kt                  MethodChannel handler, app list, icon fetch, native prefs
+  BlockingService.kt                  AccessibilityService — the actual blocking core
+  LockoutNotificationListener.kt      NotificationListenerService — suppresses notifications from blocked apps
+  LockoutAdminReceiver.kt             DeviceAdminReceiver for Work Profile provisioning
 ```
 
 ---

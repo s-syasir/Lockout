@@ -98,6 +98,17 @@ class BlockingService {
     }
   }
 
+  // ── Notification listener ────────────────────────────────────────────────
+
+  static Future<bool> hasNotificationListenerPermission() async {
+    final result = await _channel.invokeMethod<bool>('hasNotificationListenerPermission');
+    return result ?? false;
+  }
+
+  static Future<void> openNotificationListenerSettings() async {
+    await _channel.invokeMethod<void>('openNotificationListenerSettings');
+  }
+
   // ── Installed apps ────────────────────────────────────────────────────────
 
   // Returns list of installed user apps (excludes system apps).

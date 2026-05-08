@@ -77,7 +77,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _showSnack('Profile not found — it may have been deleted');
       return;
     }
-    await _toggle(profile);
+    await _toggle(profile, fromNfc: true);
   }
 
   Future<void> _tapNfc() async {
@@ -99,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _showSnack('Profile not found — it may have been deleted');
         return;
       }
-      await _toggle(profile);
+      await _toggle(profile, fromNfc: true);
     } catch (e) {
       if (mounted) _showSnack('NFC error: $e');
     } finally {
@@ -107,9 +107,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  // Tap = toggle. If this profile is active, stop. Otherwise start blocking.
-  Future<void> _toggle(Profile profile) async {
+  // Tap = toggle. NFC-initiated taps can stop; UI taps can only start.
+  Future<void> _toggle(Profile profile, {bool fromNfc = false}) async {
     if (_isBlocking && _activeProfile?.id == profile.id) {
+      if (!fromNfc) {
+        _showSnack('Scan your NFC tag to stop blocking');
+        return;
+      }
       await _stopBlocking();
     } else {
       if (profile.blockedPackages.isEmpty && !widget.storage.dpcModeEnabled) {
@@ -182,7 +186,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _SessionBanner(
             isBlocking: _isBlocking,
             activeProfile: _activeProfile,
-            onStop: _activeProfile != null ? () => _stopBlocking() : null,
           ),
           Expanded(
             child: profiles.isEmpty
@@ -340,12 +343,10 @@ class _NfcWriteDialog extends StatelessWidget {
 class _SessionBanner extends StatelessWidget {
   final bool isBlocking;
   final Profile? activeProfile;
-  final VoidCallback? onStop;
 
   const _SessionBanner({
     required this.isBlocking,
     required this.activeProfile,
-    required this.onStop,
   });
 
   @override
@@ -368,10 +369,6 @@ class _SessionBanner extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-          ),
-          TextButton(
-            onPressed: onStop,
-            child: const Text('Stop', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),

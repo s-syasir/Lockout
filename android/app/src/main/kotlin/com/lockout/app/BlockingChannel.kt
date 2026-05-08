@@ -140,6 +140,15 @@ object BlockingChannel : MethodChannel.MethodCallHandler {
                 }
             }
 
+            "hasNotificationListenerPermission" -> result.success(isNotificationListenerEnabled())
+            "openNotificationListenerSettings" -> {
+                val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+                result.success(null)
+            }
+
             else -> result.notImplemented()
         }
     }
@@ -156,6 +165,14 @@ object BlockingChannel : MethodChannel.MethodCallHandler {
     fun loadPersistedPackages(): Set<String> {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getStringSet(PREFS_KEY_PACKAGES, emptySet()) ?: emptySet()
+    }
+
+    private fun isNotificationListenerEnabled(): Boolean {
+        val enabled = Settings.Secure.getString(
+            context.contentResolver,
+            "enabled_notification_listeners"
+        ) ?: return false
+        return enabled.contains(context.packageName)
     }
 
     // Returns whether Lockout's AccessibilityService is enabled in system settings.

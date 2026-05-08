@@ -13,6 +13,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen>
     with WidgetsBindingObserver {
   bool? _hasPermission;
+  bool? _hasNotifPermission;
   bool? _hasManagedProfile;
   bool _dpcMode = false;
 
@@ -41,7 +42,13 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Future<void> _checkPermission() async {
     final ok = await BlockingService.hasAccessibilityPermission();
-    if (mounted) setState(() => _hasPermission = ok);
+    final notif = await BlockingService.hasNotificationListenerPermission();
+    if (mounted) {
+      setState(() {
+        _hasPermission = ok;
+        _hasNotifPermission = notif;
+      });
+    }
   }
 
   Future<void> _checkDpcState() async {
@@ -84,6 +91,19 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ? FilledButton(
                     onPressed: () async {
                       await BlockingService.openAccessibilitySettings();
+                    },
+                    child: const Text('Enable'),
+                  )
+                : null,
+          ),
+          ListTile(
+            leading: _notifPermissionIcon(),
+            title: const Text('Notification Access'),
+            subtitle: Text(_notifPermissionLabel()),
+            trailing: _hasNotifPermission == false
+                ? FilledButton(
+                    onPressed: () async {
+                      await BlockingService.openNotificationListenerSettings();
                     },
                     child: const Text('Enable'),
                   )
@@ -163,6 +183,29 @@ class _SettingsScreenState extends State<SettingsScreen>
   String _permissionLabel() {
     if (_hasPermission == null) return 'Checking…';
     return _hasPermission! ? 'Enabled' : 'Not enabled — tap to fix';
+  }
+
+  Widget _notifPermissionIcon() {
+    if (_hasNotifPermission == null) {
+      return const SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    return Icon(
+      _hasNotifPermission! ? Icons.check_circle : Icons.warning_amber_rounded,
+      color: _hasNotifPermission!
+          ? Colors.green
+          : Theme.of(context).colorScheme.error,
+    );
+  }
+
+  String _notifPermissionLabel() {
+    if (_hasNotifPermission == null) return 'Checking…';
+    return _hasNotifPermission!
+        ? 'Enabled — notifications from blocked apps will be suppressed'
+        : 'Not enabled — blocked apps can still send notifications';
   }
 
   String _managedProfileLabel() {
