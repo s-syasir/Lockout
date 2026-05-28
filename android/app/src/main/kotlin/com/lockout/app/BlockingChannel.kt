@@ -24,8 +24,6 @@ import java.io.ByteArrayOutputStream
 object BlockingChannel : MethodChannel.MethodCallHandler {
 
     private const val CHANNEL = "com.lockout/blocking"
-    private const val PREFS_NAME = "lockout"
-    private const val PREFS_KEY_PACKAGES = "blocked_packages"
 
     private lateinit var context: Context
 
@@ -149,23 +147,48 @@ object BlockingChannel : MethodChannel.MethodCallHandler {
                 result.success(null)
             }
 
+            // ── Schedule ─────────────────────────────────────────────────────
+            "setSchedule" -> {
+                val profileId = call.argument<String>("profileId") ?: run {
+                    result.error("INVALID_ARG", "profileId required", null)
+                    return
+                }
+                val startHH = call.argument<Int>("startHH") ?: 0
+                val startMM = call.argument<Int>("startMM") ?: 0
+                val endHH   = call.argument<Int>("endHH")   ?: 0
+                val endMM   = call.argument<Int>("endMM")   ?: 0
+                val profile = ScheduledProfile(profileId, emptyList(), startHH, startMM, endHH, endMM)
+                ScheduleReceiver.scheduleAll(context, profile)
+                result.success(null)
+            }
+            "cancelSchedule" -> {
+                val profileId = call.argument<String>("profileId") ?: run {
+                    result.error("INVALID_ARG", "profileId required", null)
+                    return
+                }
+                ScheduleReceiver.cancel(context, profileId)
+                result.success(null)
+            }
+            "canScheduleExactAlarms" -> result.success(ScheduleReceiver.canScheduleExact(context))
+            "openExactAlarmSettings" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(intent)
+                }
+                result.success(null)
+            }
+
             else -> result.notImplemented()
         }
     }
 
-    // Persists the blocked package list so BlockingService can restore it
-    // after being restarted by the system (e.g. after OEM battery-saver kill).
     fun persistBlockedPackages(packages: List<String>) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putStringSet(PREFS_KEY_PACKAGES, packages.toSet())
-            .apply()
+        NativePrefs.savePackages(context, packages)
     }
 
-    fun loadPersistedPackages(): Set<String> {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getStringSet(PREFS_KEY_PACKAGES, emptySet()) ?: emptySet()
-    }
+    fun loadPersistedPackages(): Set<String> = NativePrefs.loadPackages(context)
 
     private fun isNotificationListenerEnabled(): Boolean {
         val enabled = Settings.Secure.getString(

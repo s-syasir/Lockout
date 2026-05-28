@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/backup_service.dart';
 import '../services/blocking_service.dart';
 import '../services/storage_service.dart';
 
@@ -71,6 +72,46 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
+  Future<void> _exportProfiles() async {
+    final profiles = widget.storage.getProfiles();
+    if (profiles.isEmpty) {
+      _snack('No profiles to export');
+      return;
+    }
+    final path = await BackupService.exportProfiles(profiles);
+    if (!mounted) return;
+    if (path != null) {
+      _snack('Backup saved');
+    }
+    // If path is null the user cancelled — no message needed.
+  }
+
+  Future<void> _importProfiles() async {
+    final imported = await BackupService.importProfiles();
+    if (!mounted) return;
+    if (imported == null) {
+      _snack('Import cancelled or file is invalid');
+      return;
+    }
+    int added = 0;
+    int updated = 0;
+    for (final p in imported) {
+      final existing = widget.storage.getProfile(p.id);
+      await widget.storage.upsertProfile(p);
+      if (existing == null) {
+        added++;
+      } else {
+        updated++;
+      }
+    }
+    _snack('Imported $added new, $updated updated');
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   Future<void> _toggleDpcMode(bool value) async {
     await widget.storage.setDpcMode(value);
     if (mounted) setState(() => _dpcMode = value);
@@ -139,6 +180,20 @@ class _SettingsScreenState extends State<SettingsScreen>
               'It survives OEM battery savers and requires no background service.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
             ),
+          ),
+          const Divider(),
+          _SectionHeader('Backup & restore'),
+          ListTile(
+            leading: const Icon(Icons.upload_file),
+            title: const Text('Export profiles'),
+            subtitle: const Text('Save all profiles to a file you choose'),
+            onTap: _exportProfiles,
+          ),
+          ListTile(
+            leading: const Icon(Icons.download),
+            title: const Text('Import profiles'),
+            subtitle: const Text('Load profiles from a backup file — merges with existing'),
+            onTap: _importProfiles,
           ),
           const Divider(),
           _SectionHeader('About'),

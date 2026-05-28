@@ -28,10 +28,11 @@ class BlockingService : AccessibilityService() {
         }
         instance = this
 
-        // Restore blocked packages that were persisted before a service restart.
-        // This handles the case where Android kills and restarts the service
-        // without the Flutter app being relaunched (e.g. OEM battery-saver kill).
-        val saved = BlockingChannel.loadPersistedPackages()
+        // Restore blocked packages persisted before a service restart.
+        // Must use applicationContext directly — BlockingChannel.context is only
+        // initialised when MainActivity runs, which may not have happened yet
+        // (e.g. service restarted by Android on boot before the Flutter app launches).
+        val saved = NativePrefs.loadPackages(applicationContext)
         if (saved.isNotEmpty()) {
             blockedPackages = saved
         }

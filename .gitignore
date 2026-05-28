@@ -38,8 +38,9 @@ migrate_working_dir/
 # Claude Code local session data
 .claude/
 
-# Internal roadmap — not for public repo
+# Internal notes — not for public repo
 TODOS.md
+Docs.MD
 
 # Symbolication related
 app.*.symbols

@@ -109,6 +109,43 @@ class BlockingService {
     await _channel.invokeMethod<void>('openNotificationListenerSettings');
   }
 
+  // ── Schedule ─────────────────────────────────────────────────────────────
+
+  // Set a daily start/stop alarm for a profile.
+  // startHH/startMM: 24-hour start time. endHH/endMM: 24-hour end time.
+  static Future<void> setSchedule({
+    required String profileId,
+    required int startHH,
+    required int startMM,
+    required int endHH,
+    required int endMM,
+  }) async {
+    await _channel.invokeMethod<void>('setSchedule', {
+      'profileId': profileId,
+      'startHH': startHH,
+      'startMM': startMM,
+      'endHH': endHH,
+      'endMM': endMM,
+    });
+  }
+
+  // Cancel the daily alarms for a profile.
+  static Future<void> cancelSchedule(String profileId) async {
+    await _channel.invokeMethod<void>('cancelSchedule', {'profileId': profileId});
+  }
+
+  // Whether exact alarms can be scheduled (always true on API < 31).
+  // On API 31+, requires the user to grant "Alarms & reminders" in Settings.
+  static Future<bool> canScheduleExactAlarms() async {
+    final result = await _channel.invokeMethod<bool>('canScheduleExactAlarms');
+    return result ?? true;
+  }
+
+  // Opens system settings to grant exact alarm permission (API 31+ only).
+  static Future<void> openExactAlarmSettings() async {
+    await _channel.invokeMethod<void>('openExactAlarmSettings');
+  }
+
   // ── Installed apps ────────────────────────────────────────────────────────
 
   // Returns list of installed user apps (excludes system apps).

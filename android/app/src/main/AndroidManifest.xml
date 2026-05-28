@@ -5,6 +5,12 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
     <!-- NFC is not required — app works without it (manual profile selection). -->
     <uses-feature android:name="android.hardware.nfc" android:required="false"/>
+    <!-- Scheduled blocking: reschedule alarms after device reboot. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- Scheduled blocking: exact alarms so the start/stop times are precise (API 31+). -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <!-- Scheduled blocking: notify user when a session starts (API 33+). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
         android:label="Lockout"
@@ -73,6 +79,20 @@
                 <action android:name="android.service.notification.NotificationListenerService"/>
             </intent-filter>
         </service>
+
+        <!-- Scheduled blocking: fires start/stop alarms at configured times -->
+        <receiver
+            android:name=".ScheduleReceiver"
+            android:exported="false"/>
+
+        <!-- Scheduled blocking: reschedules alarms after device reboot -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+            </intent-filter>
+        </receiver>
 
         <meta-data
             android:name="flutterEmbedding"

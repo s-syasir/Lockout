@@ -14,7 +14,8 @@ void main() async {
     if (storage.dpcModeEnabled) {
       await BlockingService.dpcSetQuietMode(true);
     } else if (profile != null && profile.blockedPackages.isNotEmpty) {
-      await BlockingService.startBlocking(profile.blockedPackages);
+      final ok = await BlockingService.startBlocking(profile.blockedPackages);
+      if (!ok) await storage.clearActiveSession();
     } else {
       await storage.clearActiveSession();
     }

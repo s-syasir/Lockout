@@ -23,6 +23,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   bool _loading = true;
   String _search = '';
 
+  bool _scheduleEnabled = false;
+  TimeOfDay _scheduleStart = const TimeOfDay(hour: 7, minute: 45);
+  TimeOfDay _scheduleEnd = const TimeOfDay(hour: 17, minute: 0);
+
   bool get _isEditing => widget.profile != null;
 
   @override
@@ -31,8 +35,24 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     _nameController =
         TextEditingController(text: widget.profile?.name ?? '');
     _selected = Set.from(widget.profile?.blockedPackages ?? []);
+
+    final p = widget.profile;
+    if (p != null) {
+      _scheduleEnabled = p.scheduleEnabled;
+      if (p.scheduleStart != null) _scheduleStart = _parseTime(p.scheduleStart!);
+      if (p.scheduleEnd != null) _scheduleEnd = _parseTime(p.scheduleEnd!);
+    }
+
     _loadApps();
   }
+
+  TimeOfDay _parseTime(String hhmm) {
+    final parts = hhmm.split(':');
+    return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+  }
+
+  String _formatTime(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   @override
   void dispose() {
@@ -67,12 +87,61 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       );
       return;
     }
+
+    if (_scheduleEnabled) {
+      final canExact = await BlockingService.canScheduleExactAlarms();
+      if (!canExact && mounted) {
+        final grant = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Allow exact alarms'),
+            content: const Text(
+              'Scheduled blocking needs the "Alarms & reminders" '
+              'permission to fire at the exact time you set. '
+              'Tap Allow to open Settings.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Allow'),
+              ),
+            ],
+          ),
+        );
+        if (grant == true) {
+          await BlockingService.openExactAlarmSettings();
+        }
+        // Let the user save anyway — alarms may still work (inexact fallback).
+      }
+    }
+
+    final profileId = widget.profile?.id ?? const Uuid().v4();
     final profile = Profile(
-      id: widget.profile?.id ?? const Uuid().v4(),
+      id: profileId,
       name: name,
       blockedPackages: _selected.toList(),
+      scheduleEnabled: _scheduleEnabled,
+      scheduleStart: _scheduleEnabled ? _formatTime(_scheduleStart) : null,
+      scheduleEnd: _scheduleEnabled ? _formatTime(_scheduleEnd) : null,
     );
     await widget.storage.upsertProfile(profile);
+
+    if (_scheduleEnabled) {
+      await BlockingService.setSchedule(
+        profileId: profileId,
+        startHH: _scheduleStart.hour,
+        startMM: _scheduleStart.minute,
+        endHH: _scheduleEnd.hour,
+        endMM: _scheduleEnd.minute,
+      );
+    } else {
+      await BlockingService.cancelSchedule(profileId);
+    }
+
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -101,6 +170,14 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               ),
               textCapitalization: TextCapitalization.words,
             ),
+          ),
+          _ScheduleSection(
+            enabled: _scheduleEnabled,
+            start: _scheduleStart,
+            end: _scheduleEnd,
+            onEnabledChanged: (v) => setState(() => _scheduleEnabled = v),
+            onStartChanged: (t) => setState(() => _scheduleStart = t),
+            onEndChanged: (t) => setState(() => _scheduleEnd = t),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -151,6 +228,94 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Schedule section ─────────────────────────────────────────────────────────
+
+class _ScheduleSection extends StatelessWidget {
+  final bool enabled;
+  final TimeOfDay start;
+  final TimeOfDay end;
+  final ValueChanged<bool> onEnabledChanged;
+  final ValueChanged<TimeOfDay> onStartChanged;
+  final ValueChanged<TimeOfDay> onEndChanged;
+
+  const _ScheduleSection({
+    required this.enabled,
+    required this.start,
+    required this.end,
+    required this.onEnabledChanged,
+    required this.onStartChanged,
+    required this.onEndChanged,
+  });
+
+  String _fmt(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  Future<void> _pickTime(
+    BuildContext context,
+    TimeOfDay current,
+    ValueChanged<TimeOfDay> onChanged,
+  ) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: current,
+      builder: (ctx, child) => MediaQuery(
+        data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
+    );
+    if (picked != null) onChanged(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SwitchListTile(
+          value: enabled,
+          onChanged: onEnabledChanged,
+          title: const Text('Auto-start on schedule'),
+          subtitle: const Text('Blocking starts and stops at set times daily'),
+          secondary: const Icon(Icons.schedule),
+        ),
+        if (enabled) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Text(
+              'Only an NFC tag can stop blocking during the scheduled window.',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Theme.of(context).colorScheme.primary),
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: ListTile(
+                  leading: const Icon(Icons.lock_clock),
+                  title: const Text('Start'),
+                  subtitle: Text(_fmt(start)),
+                  onTap: () => _pickTime(context, start, onStartChanged),
+                ),
+              ),
+              Expanded(
+                child: ListTile(
+                  leading: const Icon(Icons.lock_open),
+                  title: const Text('End'),
+                  subtitle: Text(_fmt(end)),
+                  onTap: () => _pickTime(context, end, onEndChanged),
+                ),
+              ),
+            ],
+          ),
+          const Divider(),
+        ],
+      ],
     );
   }
 }
