@@ -77,7 +77,7 @@ Or use the included scripts (require a connected device via ADB):
 
 ```bash
 ./run-debug.sh        # flutter run (debug, live reload)
-./run-install.sh      # build release APK + adb install -r (preserves app data)
+./run-install.sh      # build release APK + adb uninstall + fresh install (wipes app data)
 ```
 
 No Play Store signing config needed for local development.
@@ -139,7 +139,10 @@ If an OEM battery saver kills and restarts the `AccessibilityService` without re
 ## Roadmap
 
 - **Schedule indicator on profile tiles** — small clock icon on the home screen to show a profile has an active schedule, without opening the edit screen.
-- **Work Profile DPC blocking** — `DevicePolicyManager` freezing as a more reliable alternative for OEM devices with aggressive battery savers (Samsung, Xiaomi).
+
+### Implemented but experimental
+
+- **Work Profile DPC blocking** — `DevicePolicyManager` freezing as a more reliable alternative for OEM devices with aggressive battery savers (Samsung, Xiaomi). Accessible via Settings → Work Profile blocking (advanced). Not tested end-to-end.
 
 ---
 
