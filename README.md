@@ -6,6 +6,14 @@ Open-source NFC-triggered app blocker for Android. No Play Services required. Wo
 
 ---
 
+## Screenshots
+
+| Home | Profile edit | Settings |
+|:---:|:---:|:---:|
+| ![Home screen showing active blocking session](screenshots/home_active_session.png) | ![Profile edit screen with schedule and app picker](screenshots/profile_edit.png) | ![Settings screen](screenshots/settings.png) |
+
+---
+
 ## Features
 
 | | |
