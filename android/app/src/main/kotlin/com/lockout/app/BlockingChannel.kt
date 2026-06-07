@@ -57,11 +57,13 @@ object BlockingChannel : MethodChannel.MethodCallHandler {
                     result.error("PERMISSION_DENIED", "Accessibility Service not enabled", null)
                     return
                 }
+                NativePrefs.clearMissedNotifs(context)
                 persistBlockedPackages(packages)
                 BlockingService.startBlocking(packages)
                 result.success(true)
             }
             "stopBlocking" -> {
+                MissedNotifications.postSummaries(context)
                 persistBlockedPackages(emptyList())
                 BlockingService.stopBlocking()
                 result.success(null)

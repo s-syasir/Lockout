@@ -102,6 +102,7 @@ class ScheduleReceiver : BroadcastReceiver() {
         val profile = FlutterPrefs.getAllScheduledProfiles(ctx).find { it.id == profileId }
         val packages = profile?.packages ?: FlutterPrefs.getProfilePackages(ctx, profileId) ?: return
 
+        NativePrefs.clearMissedNotifs(ctx)
         NativePrefs.savePackages(ctx, packages)
         BlockingService.startBlocking(packages)
         FlutterPrefs.setActiveProfileId(ctx, profileId)
@@ -145,6 +146,7 @@ class ScheduleReceiver : BroadcastReceiver() {
     }
 
     private fun handleStop(ctx: Context, profileId: String) {
+        MissedNotifications.postSummaries(ctx)
         NativePrefs.savePackages(ctx, emptyList())
         BlockingService.stopBlocking()
         FlutterPrefs.setActiveProfileId(ctx, null)

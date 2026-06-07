@@ -20,7 +20,7 @@ Open-source NFC-triggered app blocker for Android. No Play Services required. Wo
 |---|---|
 | **NFC tag trigger** | Write a profile to a cheap NTAG213 tag (~$0.50). Tap once to start blocking, tap again to stop. **Stopping requires the NFC tag** — there is no in-app stop button. |
 | **Scheduled blocking** | Set a daily start and end time per profile. Blocking kicks in automatically and can only be cancelled mid-window by scanning the NFC tag. A notification fires when the session starts. |
-| **Notification suppression** | Notifications from blocked apps are silently cancelled while a session is active. Requires Notification Access permission (optional, enable via Settings). |
+| **Notification suppression** | Notifications from blocked apps are silently cancelled while a session is active. When the session ends, a per-app summary appears in your notification shade showing what you missed — tap it to open the app. Requires Notification Access permission (optional, enable via Settings). |
 | **Multiple profiles** | Focus, Bedtime, Work — each with its own app list and optional schedule. |
 | **Backup & restore** | Export all profiles to a JSON file (any location you pick). Re-import after a reinstall — your existing NFC tags keep working because profile IDs are preserved. |
 | **No internet permission** | Ever. No analytics, no telemetry, no crash reporting. Declared in the manifest and intentionally permanent. |
@@ -69,15 +69,23 @@ Tag payload: `lockout:profile:<uuid>` as an NDEF TextRecord. Fits any NTAG213 ta
 
 ```bash
 flutter pub get
-flutter run           # debug on connected device
-flutter build apk     # release APK (unsigned, debug key)
 ```
+
+`flutter run` and `flutter build apk` don't work on this machine (Windows Store path issue with Flutter's Gradle wrapper). Use the scripts below or invoke Gradle directly from `android/`.
 
 Or use the included scripts (require a connected device via ADB):
 
 ```bash
-./run-debug.sh        # flutter run (debug, live reload)
+./run-debug.sh        # build debug APK + adb install -r (keeps app data)
 ./run-install.sh      # build release APK + adb uninstall + fresh install (wipes app data)
+```
+
+Manual equivalent:
+
+```bash
+cd android
+bash gradlew assembleDebug    # → ../build/app/outputs/flutter-apk/app-debug.apk
+bash gradlew assembleRelease  # → ../build/app/outputs/flutter-apk/app-release.apk
 ```
 
 No Play Store signing config needed for local development.
@@ -111,7 +119,8 @@ android/…/kotlin/com/lockout/app/
   FlutterPrefs.kt                     Reads/writes Flutter's SharedPreferences from native code
   ScheduleReceiver.kt                 BroadcastReceiver — fires start/stop alarms, reschedules daily
   BootReceiver.kt                     BroadcastReceiver — reschedules alarms + resumes blocking after reboot
-  LockoutNotificationListener.kt      NotificationListenerService — suppresses notifications from blocked apps
+  LockoutNotificationListener.kt      NotificationListenerService — suppresses notifications from blocked apps, stores missed entries
+  MissedNotifications.kt              Posts per-app missed notification summaries when a session ends
   LockoutAdminReceiver.kt             DeviceAdminReceiver for Work Profile provisioning
 ```
 
