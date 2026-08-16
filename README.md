@@ -20,7 +20,7 @@ Open-source NFC-triggered app blocker for Android. No Play Services required. Wo
 |---|---|
 | **NFC tag trigger** | Write a profile to a cheap NTAG213 tag (~$0.50). Tap once to start blocking, tap again to stop. **Stopping requires the NFC tag** — there is no in-app stop button. |
 | **Scheduled blocking** | Set a daily start and end time per profile. Blocking kicks in automatically and can only be cancelled mid-window by scanning the NFC tag. A notification fires when the session starts. |
-| **Notification suppression** | Notifications from blocked apps are silently cancelled while a session is active. When the session ends, a per-app summary appears in your notification shade showing what you missed — tap it to open the app. Requires Notification Access permission (optional, enable via Settings). |
+| **Notification suppression** | Notifications from blocked apps are silently cancelled while a session is active. When the session ends, a per-app summary appears in your notification shade showing what you missed — tap it to open the app. Requires Notification Access permission (optional, enable via Settings). The session-start notification and missed-notification summary themselves require the standard Android Notifications permission (prompted on first launch on Android 13+). |
 | **Multiple profiles** | Focus, Bedtime, Work — each with its own app list and optional schedule. |
 | **Backup & restore** | Export all profiles to a JSON file (any location you pick). Re-import after a reinstall — your existing NFC tags keep working because profile IDs are preserved. |
 | **No internet permission** | Ever. No analytics, no telemetry, no crash reporting. Declared in the manifest and intentionally permanent. |
@@ -60,6 +60,7 @@ Tag payload: `lockout:profile:<uuid>` as an NDEF TextRecord. Fits any NTAG213 ta
 - Android 8.0+ (API 26)
 - NFC hardware *(optional — profiles can be started manually by tapping them in the app; stopping always requires NFC)*
 - Accessibility Service permission *(one-time, guided on first launch)*
+- Notifications permission *(prompted automatically on first launch on Android 13+; without it, the session-start notification and missed-notification summary silently never appear — re-request via Settings → Notifications if denied)*
 - Notification Access permission *(optional — suppresses notifications from blocked apps; enable via Settings → Notification Access)*
 - Alarms & reminders permission *(optional — required for exact scheduled start times on Android 12+; app prompts when you save a schedule)*
 
@@ -96,7 +97,7 @@ No Play Store signing config needed for local development.
 
 ```
 lib/
-  main.dart                       startup, session resume on boot
+  main.dart                       startup, session resume on boot, notifications permission prompt
   models/
     profile.dart                  Profile model + JSON serialisation (inc. schedule fields)
     app_info.dart                 AppInfo (packageName, appName)
