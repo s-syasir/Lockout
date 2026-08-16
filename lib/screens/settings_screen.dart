@@ -15,6 +15,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     with WidgetsBindingObserver {
   bool? _hasPermission;
   bool? _hasNotifPermission;
+  bool? _hasNotifPostPermission;
   bool? _hasManagedProfile;
   bool _dpcMode = false;
 
@@ -44,11 +45,25 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _checkPermission() async {
     final ok = await BlockingService.hasAccessibilityPermission();
     final notif = await BlockingService.hasNotificationListenerPermission();
+    final notifPost = await BlockingService.hasNotificationPermission();
     if (mounted) {
       setState(() {
         _hasPermission = ok;
         _hasNotifPermission = notif;
+        _hasNotifPostPermission = notifPost;
       });
+    }
+  }
+
+  // Shows the system prompt first; if it's already been permanently denied
+  // the prompt no-ops, so fall back to the app's notification settings page.
+  Future<void> _requestNotifPostPermission() async {
+    final granted = await BlockingService.requestNotificationPermission();
+    if (!mounted) return;
+    if (granted) {
+      setState(() => _hasNotifPostPermission = true);
+    } else {
+      await BlockingService.openAppNotificationSettings();
     }
   }
 
@@ -146,6 +161,17 @@ class _SettingsScreenState extends State<SettingsScreen>
                     onPressed: () async {
                       await BlockingService.openNotificationListenerSettings();
                     },
+                    child: const Text('Enable'),
+                  )
+                : null,
+          ),
+          ListTile(
+            leading: _notifPostPermissionIcon(),
+            title: const Text('Notifications'),
+            subtitle: Text(_notifPostPermissionLabel()),
+            trailing: _hasNotifPostPermission == false
+                ? FilledButton(
+                    onPressed: _requestNotifPostPermission,
                     child: const Text('Enable'),
                   )
                 : null,
@@ -261,6 +287,29 @@ class _SettingsScreenState extends State<SettingsScreen>
     return _hasNotifPermission!
         ? 'Enabled — notifications from blocked apps will be suppressed'
         : 'Not enabled — blocked apps can still send notifications';
+  }
+
+  Widget _notifPostPermissionIcon() {
+    if (_hasNotifPostPermission == null) {
+      return const SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    return Icon(
+      _hasNotifPostPermission! ? Icons.check_circle : Icons.warning_amber_rounded,
+      color: _hasNotifPostPermission!
+          ? Colors.green
+          : Theme.of(context).colorScheme.error,
+    );
+  }
+
+  String _notifPostPermissionLabel() {
+    if (_hasNotifPostPermission == null) return 'Checking…';
+    return _hasNotifPostPermission!
+        ? 'Enabled — session start and missed-notification summaries will show'
+        : 'Not enabled — session start and missed-notification summaries won\'t show';
   }
 
   String _managedProfileLabel() {

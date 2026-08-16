@@ -109,6 +109,27 @@ class BlockingService {
     await _channel.invokeMethod<void>('openNotificationListenerSettings');
   }
 
+  // Whether POST_NOTIFICATIONS is granted (always true below Android 13).
+  // Required for the session-start notification and the missed-notification
+  // summary to actually appear.
+  static Future<bool> hasNotificationPermission() async {
+    final result = await _channel.invokeMethod<bool>('hasNotificationPermission');
+    return result ?? false;
+  }
+
+  // Shows the system POST_NOTIFICATIONS prompt (Android 13+ only).
+  // Returns the resulting grant state. No-ops to true below Android 13.
+  static Future<bool> requestNotificationPermission() async {
+    final result = await _channel.invokeMethod<bool>('requestNotificationPermission');
+    return result ?? false;
+  }
+
+  // Opens this app's system notification settings — the only way back in
+  // once the user has permanently denied the POST_NOTIFICATIONS prompt.
+  static Future<void> openAppNotificationSettings() async {
+    await _channel.invokeMethod<void>('openAppNotificationSettings');
+  }
+
   // ── Schedule ─────────────────────────────────────────────────────────────
 
   // Set a daily start/stop alarm for a profile.

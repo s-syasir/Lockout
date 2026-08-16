@@ -1,5 +1,6 @@
 package com.lockout.app
 
+import android.Manifest
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
@@ -14,6 +15,7 @@ import android.os.UserHandle
 import android.os.UserManager
 import android.provider.Settings
 import android.text.TextUtils
+import androidx.core.content.ContextCompat
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -38,6 +40,13 @@ object BlockingChannel : MethodChannel.MethodCallHandler {
     // Pending result for an in-flight dpcProvisionManagedProfile call.
     private var pendingProvisionResult: MethodChannel.Result? = null
 
+    // Set by MainActivity so BlockingChannel can trigger the POST_NOTIFICATIONS
+    // system prompt without holding an Activity reference itself.
+    var requestNotificationPermissionFn: (() -> Unit)? = null
+
+    // Pending result for an in-flight requestNotificationPermission call.
+    private var pendingNotifPermResult: MethodChannel.Result? = null
+
     fun register(ctx: Context, messenger: BinaryMessenger) {
         context = ctx.applicationContext
         MethodChannel(messenger, CHANNEL).setMethodCallHandler(this)
@@ -47,6 +56,13 @@ object BlockingChannel : MethodChannel.MethodCallHandler {
     fun resolveProvisioningResult(success: Boolean) {
         pendingProvisionResult?.success(success)
         pendingProvisionResult = null
+    }
+
+    // Called by MainActivity.onRequestPermissionsResult after the user responds
+    // to the POST_NOTIFICATIONS system prompt.
+    fun resolveNotificationPermissionResult(granted: Boolean) {
+        pendingNotifPermResult?.success(granted)
+        pendingNotifPermResult = null
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -149,6 +165,27 @@ object BlockingChannel : MethodChannel.MethodCallHandler {
                 result.success(null)
             }
 
+            "hasNotificationPermission" -> result.success(hasPostNotificationsPermission())
+            "requestNotificationPermission" -> {
+                if (hasPostNotificationsPermission()) {
+                    result.success(true)
+                    return
+                }
+                pendingNotifPermResult = result
+                requestNotificationPermissionFn?.invoke() ?: run {
+                    pendingNotifPermResult = null
+                    result.error("NO_ACTIVITY", "Activity not available for permission request", null)
+                }
+            }
+            "openAppNotificationSettings" -> {
+                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+                result.success(null)
+            }
+
             // ── Schedule ─────────────────────────────────────────────────────
             "setSchedule" -> {
                 val profileId = call.argument<String>("profileId") ?: run {
@@ -191,6 +228,14 @@ object BlockingChannel : MethodChannel.MethodCallHandler {
     }
 
     fun loadPersistedPackages(): Set<String> = NativePrefs.loadPackages(context)
+
+    // POST_NOTIFICATIONS is a runtime permission on API 33+; auto-granted below that.
+    private fun hasPostNotificationsPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+        return ContextCompat.checkSelfPermission(
+            context, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+    }
 
     private fun isNotificationListenerEnabled(): Boolean {
         val enabled = Settings.Secure.getString(

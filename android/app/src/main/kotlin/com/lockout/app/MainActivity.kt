@@ -1,11 +1,15 @@
 package com.lockout.app
 
+import android.Manifest
 import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.nfc.NdefMessage
 import android.nfc.NfcAdapter
+import android.os.Build
+import androidx.core.app.ActivityCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 
@@ -13,12 +17,36 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val REQ_PROVISION_MANAGED_PROFILE = 1001
+        private const val REQ_POST_NOTIFICATIONS = 1002
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         BlockingChannel.register(this, flutterEngine.dartExecutor.binaryMessenger)
         BlockingChannel.startProvisioningFn = { startManagedProfileProvisioning() }
+        BlockingChannel.requestNotificationPermissionFn = { requestPostNotificationsPermission() }
+    }
+
+    // POST_NOTIFICATIONS is a runtime permission on API 33+; below that it's
+    // granted automatically at install time.
+    private fun requestPostNotificationsPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ActivityCompat.requestPermissions(
+                this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS
+            )
+        } else {
+            BlockingChannel.resolveNotificationPermissionResult(true)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_POST_NOTIFICATIONS) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            BlockingChannel.resolveNotificationPermissionResult(granted)
+        }
     }
 
     @Suppress("DEPRECATION")

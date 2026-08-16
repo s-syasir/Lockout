@@ -22,6 +22,12 @@ void main() async {
   }
 
   runApp(LockoutApp(storage: storage));
+
+  // Fire-and-forget: shows the system POST_NOTIFICATIONS prompt once per
+  // install (Android tracks this itself — a no-op on repeat launches once
+  // answered). Without it, session-start and missed-notification summaries
+  // silently never appear on Android 13+.
+  BlockingService.requestNotificationPermission();
 }
 
 class LockoutApp extends StatelessWidget {
