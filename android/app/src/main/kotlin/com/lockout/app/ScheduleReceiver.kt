@@ -1,14 +1,11 @@
 package com.lockout.app
 
 import android.app.AlarmManager
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import androidx.core.app.NotificationCompat
 import java.util.Calendar
 
 // Handles scheduled start/stop alarms. Each alarm reschedules itself for the
@@ -19,8 +16,6 @@ class ScheduleReceiver : BroadcastReceiver() {
         private const val ACTION_START = "com.lockout.SCHEDULE_START"
         private const val ACTION_STOP = "com.lockout.SCHEDULE_STOP"
         private const val EXTRA_PROFILE_ID = "profile_id"
-        private const val NOTIF_CHANNEL_ID = "lockout_schedule"
-        private const val NOTIF_ID = 1001
 
         fun scheduleAll(ctx: Context, profile: ScheduledProfile) {
             scheduleAlarm(ctx, profile.id, profile.startHH, profile.startMM, isStart = true)
@@ -108,41 +103,12 @@ class ScheduleReceiver : BroadcastReceiver() {
         FlutterPrefs.setActiveProfileId(ctx, profileId)
 
         val profileName = FlutterPrefs.getProfileName(ctx, profileId) ?: "Session"
-        showStartNotification(ctx, profileName)
+        SessionNotifications.showStart(ctx, profileName)
 
         // Reschedule for next day
         if (profile != null) {
             scheduleAlarm(ctx, profileId, profile.startHH, profile.startMM, isStart = true)
         }
-    }
-
-    private fun showStartNotification(ctx: Context, profileName: String) {
-        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                NOTIF_CHANNEL_ID,
-                "Schedule",
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply { description = "Fires when a scheduled blocking session starts" }
-            nm.createNotificationChannel(channel)
-        }
-
-        val launchIntent = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)
-        val pi = PendingIntent.getActivity(
-            ctx, 0, launchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notif = NotificationCompat.Builder(ctx, NOTIF_CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Lockout")
-            .setContentText("\"$profileName\" session started")
-            .setAutoCancel(true)
-            .setContentIntent(pi)
-            .build()
-
-        nm.notify(NOTIF_ID, notif)
     }
 
     private fun handleStop(ctx: Context, profileId: String) {

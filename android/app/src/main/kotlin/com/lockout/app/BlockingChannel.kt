@@ -69,6 +69,10 @@ object BlockingChannel : MethodChannel.MethodCallHandler {
         when (call.method) {
             "startBlocking" -> {
                 val packages = call.argument<List<String>>("packages") ?: emptyList()
+                // Null when this is a mid-session package-list update (e.g.
+                // editing the active profile), not a genuine new session -
+                // only post the start notification for real starts.
+                val profileName = call.argument<String>("profileName")
                 if (!isAccessibilityEnabled()) {
                     result.error("PERMISSION_DENIED", "Accessibility Service not enabled", null)
                     return
@@ -76,6 +80,7 @@ object BlockingChannel : MethodChannel.MethodCallHandler {
                 NativePrefs.clearMissedNotifs(context)
                 persistBlockedPackages(packages)
                 BlockingService.startBlocking(packages)
+                if (profileName != null) SessionNotifications.showStart(context, profileName)
                 result.success(true)
             }
             "stopBlocking" -> {

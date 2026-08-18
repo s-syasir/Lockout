@@ -10,12 +10,15 @@ import '../models/app_info.dart';
 class BlockingService {
   static const _channel = MethodChannel('com.lockout/blocking');
 
-  // Start blocking for the given package names.
-  static Future<bool> startBlocking(List<String> packages) async {
+  // Start blocking for the given package names. Pass [profileName] for a
+  // genuine new session (posts the "session started" notification) - leave
+  // it null for a mid-session package-list update (e.g. editing the active
+  // profile), which shouldn't re-announce a session that's already running.
+  static Future<bool> startBlocking(List<String> packages, {String? profileName}) async {
     try {
       final result = await _channel.invokeMethod<bool>(
         'startBlocking',
-        {'packages': packages},
+        {'packages': packages, 'profileName': profileName},
       );
       return result ?? false;
     } on PlatformException catch (e) {

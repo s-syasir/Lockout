@@ -11,19 +11,33 @@ import org.json.JSONObject
 object MissedNotifications {
 
     private const val CHANNEL_ID = "lockout_missed"
+    private const val NO_NOTIFS_ID = -1001
 
     fun postSummaries(ctx: Context) {
         val arr = NativePrefs.loadMissedNotifs(ctx)
-        if (arr.length() == 0) return
+
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        ensureChannel(nm)
+
+        if (arr.length() == 0) {
+            // Always post something on session end, even when nothing was
+            // suppressed - confirms the feature ran at all, rather than
+            // leaving it ambiguous whether it's broken or just quiet.
+            val notif = NotificationCompat.Builder(ctx, CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle("Lockout")
+                .setContentText("No notifications while locked out")
+                .setAutoCancel(true)
+                .build()
+            nm.notify(NO_NOTIFS_ID, notif)
+            return
+        }
 
         val byPkg = mutableMapOf<String, MutableList<JSONObject>>()
         for (i in 0 until arr.length()) {
             val obj = arr.getJSONObject(i)
             byPkg.getOrPut(obj.getString("pkg")) { mutableListOf() }.add(obj)
         }
-
-        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        ensureChannel(nm)
 
         for ((pkg, notifs) in byPkg) {
             val appName = notifs.first().getString("app")

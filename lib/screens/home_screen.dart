@@ -136,7 +136,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       return ok;
     } else {
-      final ok = await BlockingService.startBlocking(profile.blockedPackages);
+      final ok = await BlockingService.startBlocking(
+        profile.blockedPackages,
+        profileName: profile.name,
+      );
       if (!ok && mounted) {
         _showSnack('Could not start blocking — check Accessibility permission');
       }
