@@ -27,9 +27,39 @@ class BlockingService {
     }
   }
 
-  // Stop all blocking.
-  static Future<void> stopBlocking() async {
-    await _channel.invokeMethod<void>('stopBlocking');
+  // Stop all blocking. Pass [profileId] and [armReminder]: true when this is
+  // an unlimited stop outside the profile's own schedule window — arms a
+  // recurring notification nudging the user to re-brick.
+  static Future<void> stopBlocking({String? profileId, bool armReminder = false}) async {
+    await _channel.invokeMethod<void>(
+      'stopBlocking',
+      {'profileId': profileId, 'armReminder': armReminder},
+    );
+  }
+
+  // Stops blocking now and silently re-bricks after [minutes], notifying at
+  // both ends. Used for a mid-schedule temporary unblock.
+  static Future<void> startTempUnblock({
+    required String profileId,
+    required String profileName,
+    required int minutes,
+  }) async {
+    await _channel.invokeMethod<void>('startTempUnblock', {
+      'profileId': profileId,
+      'profileName': profileName,
+      'minutes': minutes,
+    });
+  }
+
+  // Cancels a pending temporary unblock and re-bricks immediately.
+  static Future<void> endTempUnblock(String profileId) async {
+    await _channel.invokeMethod<void>('endTempUnblock', {'profileId': profileId});
+  }
+
+  // Returns {'profileId', 'expiryMs'} if a temp-unblock countdown is running, else null.
+  static Future<Map<String, dynamic>?> getPendingTempUnblock() async {
+    final result = await _channel.invokeMapMethod<String, dynamic>('getPendingTempUnblock');
+    return result;
   }
 
   // Whether the native blocking service is running.

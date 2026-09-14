@@ -94,6 +94,16 @@
             </intent-filter>
         </receiver>
 
+        <!-- Temporary unblock: silently re-bricks after the chosen duration -->
+        <receiver
+            android:name=".TempUnblockReceiver"
+            android:exported="false"/>
+
+        <!-- Unlimited-stop-outside-schedule: nags every ~30 min to re-brick -->
+        <receiver
+            android:name=".RebrickReminderReceiver"
+            android:exported="false"/>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

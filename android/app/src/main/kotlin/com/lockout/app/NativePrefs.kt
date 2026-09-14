@@ -12,6 +12,47 @@ object NativePrefs {
     private const val KEY_PACKAGES = "blocked_packages"
     private const val KEY_MISSED_NOTIFS = "missed_notifs"
     private const val MISSED_NOTIFS_CAP = 200
+    private const val KEY_TEMP_UNBLOCK_PROFILE = "temp_unblock_profile_id"
+    private const val KEY_TEMP_UNBLOCK_EXPIRY = "temp_unblock_expiry_ms"
+    private const val KEY_NAG_PROFILE = "nag_profile_id"
+
+    fun saveTempUnblock(ctx: Context, profileId: String, expiryMs: Long) {
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_TEMP_UNBLOCK_PROFILE, profileId)
+            .putLong(KEY_TEMP_UNBLOCK_EXPIRY, expiryMs)
+            .apply()
+    }
+
+    fun clearTempUnblock(ctx: Context) {
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_TEMP_UNBLOCK_PROFILE)
+            .remove(KEY_TEMP_UNBLOCK_EXPIRY)
+            .apply()
+    }
+
+    fun getTempUnblockProfileId(ctx: Context): String? =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_TEMP_UNBLOCK_PROFILE, null)
+
+    fun getTempUnblockExpiryMs(ctx: Context): Long =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getLong(KEY_TEMP_UNBLOCK_EXPIRY, 0L)
+
+    fun saveNagProfile(ctx: Context, profileId: String) {
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putString(KEY_NAG_PROFILE, profileId).apply()
+    }
+
+    fun clearNagProfile(ctx: Context) {
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().remove(KEY_NAG_PROFILE).apply()
+    }
+
+    fun getNagProfileId(ctx: Context): String? =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_NAG_PROFILE, null)
 
     fun savePackages(ctx: Context, packages: Collection<String>) {
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

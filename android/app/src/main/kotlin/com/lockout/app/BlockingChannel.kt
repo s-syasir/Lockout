@@ -77,6 +77,8 @@ object BlockingChannel : MethodChannel.MethodCallHandler {
                     result.error("PERMISSION_DENIED", "Accessibility Service not enabled", null)
                     return
                 }
+                RebrickReminderReceiver.stop(context)
+                TempUnblockReceiver.cancelAny(context)
                 NativePrefs.clearMissedNotifs(context)
                 persistBlockedPackages(packages)
                 BlockingService.startBlocking(packages)
@@ -87,7 +89,57 @@ object BlockingChannel : MethodChannel.MethodCallHandler {
                 MissedNotifications.postSummaries(context)
                 persistBlockedPackages(emptyList())
                 BlockingService.stopBlocking()
+                // Optional: arm the "still unblocked" nag when this is an unlimited
+                // stop outside the profile's own schedule window (Dart decides that).
+                val profileId = call.argument<String>("profileId")
+                val armReminder = call.argument<Boolean>("armReminder") ?: false
+                if (armReminder && profileId != null) {
+                    RebrickReminderReceiver.start(context, profileId)
+                }
                 result.success(null)
+            }
+            "startTempUnblock" -> {
+                val profileId = call.argument<String>("profileId") ?: run {
+                    result.error("INVALID_ARG", "profileId required", null)
+                    return
+                }
+                val minutes = call.argument<Int>("minutes") ?: run {
+                    result.error("INVALID_ARG", "minutes required", null)
+                    return
+                }
+                val profileName = call.argument<String>("profileName")
+                    ?: FlutterPrefs.getProfileName(context, profileId) ?: "Session"
+                if (!isAccessibilityEnabled()) {
+                    result.error("PERMISSION_DENIED", "Accessibility Service not enabled", null)
+                    return
+                }
+                persistBlockedPackages(emptyList())
+                BlockingService.stopBlocking()
+                TempUnblockReceiver.schedule(context, profileId, minutes)
+                SessionNotifications.showTempUnblock(context, profileName, minutes)
+                result.success(null)
+            }
+            "endTempUnblock" -> {
+                val profileId = call.argument<String>("profileId") ?: run {
+                    result.error("INVALID_ARG", "profileId required", null)
+                    return
+                }
+                TempUnblockReceiver.cancelAny(context)
+                val packages = FlutterPrefs.getProfilePackages(context, profileId) ?: emptyList()
+                persistBlockedPackages(packages)
+                BlockingService.startBlocking(packages)
+                result.success(null)
+            }
+            "getPendingTempUnblock" -> {
+                val profileId = NativePrefs.getTempUnblockProfileId(context)
+                if (profileId == null) {
+                    result.success(null)
+                } else {
+                    result.success(mapOf(
+                        "profileId" to profileId,
+                        "expiryMs" to NativePrefs.getTempUnblockExpiryMs(context)
+                    ))
+                }
             }
             "isBlocking" -> result.success(BlockingService.isBlocking)
             "hasAccessibilityPermission" -> result.success(isAccessibilityEnabled())

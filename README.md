@@ -3,6 +3,7 @@
 Open-source NFC-triggered app blocker for Android. No Play Services required. Works on GrapheneOS, CalyxOS, and microG.
 
 **Tap an NFC tag → your distracting apps are blocked until you tap it again.**
+Tap again mid-schedule and it'll offer a timed unblock instead of stopping outright — so you can check one thing without forgetting to re-brick for the rest of the day.
 
 ---
 
@@ -19,7 +20,9 @@ Open-source NFC-triggered app blocker for Android. No Play Services required. Wo
 | | |
 |---|---|
 | **NFC tag trigger** | Write a profile to a cheap NTAG213 tag (~$0.50). Tap once to start blocking, tap again to stop. **Stopping requires the NFC tag** — there is no in-app stop button. |
-| **Scheduled blocking** | Set a daily start and end time per profile. Blocking kicks in automatically and can only be cancelled mid-window by scanning the NFC tag. A notification fires when the session starts. |
+| **Timed unblock** | Tapping to stop a profile with an active schedule doesn't just stop it — it asks how long: 5, 10, or 15 minutes while you're inside the schedule window (auto re-bricks when time's up, no second tap needed), plus an **Unlimited** option outside the window for a real stop. Tapping the tag again mid-countdown ends it early and re-bricks immediately. |
+| **Re-brick reminder** | Choosing Unlimited outside a profile's own schedule window arms a recurring nudge — a notification every ~30 minutes asking you to re-brick, but only once you've actually dismissed the last one (so it never stacks). Tapping it re-bricks instantly. Cancels itself once the schedule kicks back in or you re-brick another way. |
+| **Scheduled blocking** | Set a daily start and end time per profile. Blocking kicks in automatically; stopping mid-window goes through the timed-unblock picker above rather than a flat cancel. A notification fires when the session starts. |
 | **Notification suppression** | Notifications from blocked apps are silently cancelled while a session is active. When the session ends, a per-app summary appears in your notification shade showing what you missed — tap it to open the app. Requires Notification Access permission (optional, enable via Settings). The session-start notification and missed-notification summary themselves require the standard Android Notifications permission (prompted on first launch on Android 13+). |
 | **Multiple profiles** | Focus, Bedtime, Work — each with its own app list and optional schedule. |
 | **Backup & restore** | Export all profiles to a JSON file (any location you pick). Re-import after a reinstall — your existing NFC tags keep working because profile IDs are preserved. |
@@ -62,7 +65,7 @@ Tag payload: `lockout:profile:<uuid>` as an NDEF TextRecord. Fits any NTAG213 ta
 - Accessibility Service permission *(one-time, guided on first launch)*
 - Notifications permission *(prompted automatically on first launch on Android 13+; without it, the session-start notification and missed-notification summary silently never appear — re-request via Settings → Notifications if denied)*
 - Notification Access permission *(optional — suppresses notifications from blocked apps; enable via Settings → Notification Access)*
-- Alarms & reminders permission *(optional — required for exact scheduled start times on Android 12+; app prompts when you save a schedule)*
+- Alarms & reminders permission *(optional — required for exact scheduled start/stop times on Android 12+; app prompts when you save a schedule. Timed-unblock and re-brick-reminder timers use inexact alarms and work regardless.)*
 
 ---
 
@@ -119,9 +122,12 @@ android/…/kotlin/com/lockout/app/
   NativePrefs.kt                      Centralised native SharedPreferences helper
   FlutterPrefs.kt                     Reads/writes Flutter's SharedPreferences from native code
   ScheduleReceiver.kt                 BroadcastReceiver — fires start/stop alarms, reschedules daily
-  BootReceiver.kt                     BroadcastReceiver — reschedules alarms + resumes blocking after reboot
+  BootReceiver.kt                     BroadcastReceiver — reschedules alarms + resumes blocking/timers after reboot
+  TempUnblockReceiver.kt              BroadcastReceiver — one-shot alarm that silently re-bricks after a timed unblock
+  RebrickReminderReceiver.kt          BroadcastReceiver — ~30 min recurring re-brick nag + its notification's tap action
   LockoutNotificationListener.kt      NotificationListenerService — suppresses notifications from blocked apps, stores missed entries
   MissedNotifications.kt              Posts per-app missed notification summaries when a session ends
+  SessionNotifications.kt             Posts session start/resumed/timed-unblock/re-brick-nag notifications
   LockoutAdminReceiver.kt             DeviceAdminReceiver for Work Profile provisioning
 ```
 
@@ -144,6 +150,12 @@ If an OEM battery saver kills and restarts the `AccessibilityService` without re
 **Scheduled blocking uses AlarmManager, not a background service**
 `setExactAndAllowWhileIdle` fires the receiver even in Doze mode. Each alarm reschedules itself for the next day on receipt. The `BootReceiver` re-registers all alarms on reboot and starts blocking immediately if the current time falls within a scheduled window.
 
+**Re-brick nag polls its own notification instead of tracking dismissal directly**
+Android gives an app no dismissal callback for a plain notification. `RebrickReminderReceiver` instead re-checks every ~30 min via `NotificationManager.getActiveNotifications()` — if the previous nag is still sitting there (unread), it skips reposting and just reschedules; if it's gone (tapped or swiped), it posts a fresh one. Same fixed notification ID throughout, so there's never more than one nag on screen.
+
+**Timed unblock keeps the Flutter-side session "active" through the countdown**
+A 5/10/15-minute unblock doesn't clear the active profile in `StorageService` — it just tells the native side to stop enforcing and re-arm itself via `TempUnblockReceiver`. That's what lets a re-tap mid-countdown be read as "end early," rather than as starting a brand-new session.
+
 ---
 
 ## Roadmap
@@ -152,7 +164,7 @@ If an OEM battery saver kills and restarts the `AccessibilityService` without re
 
 ### Implemented but experimental
 
-- **Work Profile DPC blocking** — `DevicePolicyManager` freezing as a more reliable alternative for OEM devices with aggressive battery savers (Samsung, Xiaomi). Accessible via Settings → Work Profile blocking (advanced). Not tested end-to-end.
+- **Work Profile DPC blocking** — `DevicePolicyManager` freezing as a more reliable alternative for OEM devices with aggressive battery savers (Samsung, Xiaomi). Accessible via Settings → Work Profile blocking (advanced). Not tested end-to-end. Doesn't have the timed-unblock/re-brick-reminder flow yet — stopping is still an immediate full stop.
 
 ---
 

@@ -20,14 +20,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isBlocking = false;
   Profile? _activeProfile;
   bool _nfcListening = false;
+  String? _tempUnblockProfileId;
+  DateTime? _tempUnblockExpiry;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _syncState();
-    _checkOnboarding();
-    _checkPendingNfcTag();
+    _init();
+  }
+
+  // Sequenced deliberately: a cold start from a background-killed process is
+  // exactly how an NFC tap normally reaches this app, so _syncState() must
+  // finish before _checkPendingNfcTag() reads _isBlocking/_activeProfile —
+  // otherwise a stop-tap races ahead of state loading and reads as a start.
+  Future<void> _init() async {
+    await _syncState();
+    await _checkOnboarding();
+    await _checkPendingNfcTag();
   }
 
   @override
@@ -39,9 +49,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _syncState();
-      _checkPendingNfcTag();
+      _handleResume();
     }
+  }
+
+  Future<void> _handleResume() async {
+    await _syncState();
+    await _checkPendingNfcTag();
   }
 
   Future<void> _syncState() async {
@@ -53,11 +67,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     final profileId = widget.storage.getActiveProfileId();
     final profile = profileId != null ? widget.storage.getProfile(profileId) : null;
+    final pending = widget.storage.dpcModeEnabled
+        ? null
+        : await BlockingService.getPendingTempUnblock();
     if (!mounted) return;
     setState(() {
       _isBlocking = blocking;
       _activeProfile = profile;
+      _tempUnblockProfileId = pending?['profileId'] as String?;
+      final expiryMs = pending?['expiryMs'] as int?;
+      _tempUnblockExpiry =
+          expiryMs != null ? DateTime.fromMillisecondsSinceEpoch(expiryMs) : null;
     });
+  }
+
+  // Whether "now" falls inside a scheduled profile's own start/end window.
+  bool _isNowInSchedule(Profile p) {
+    if (!p.scheduleEnabled || p.scheduleStart == null || p.scheduleEnd == null) {
+      return false;
+    }
+    final start = p.scheduleStart!.split(':').map(int.parse).toList();
+    final end = p.scheduleEnd!.split(':').map(int.parse).toList();
+    final now = TimeOfDay.now();
+    final nowMins = now.hour * 60 + now.minute;
+    final startMins = start[0] * 60 + start[1];
+    final endMins = end[0] * 60 + end[1];
+    if (startMins < endMins) {
+      return nowMins >= startMins && nowMins < endMins;
+    }
+    return nowMins >= startMins || nowMins < endMins; // window crosses midnight
   }
 
   Future<void> _checkOnboarding() async {
@@ -114,7 +152,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _showSnack('Scan your NFC tag to stop blocking');
         return;
       }
-      await _stopBlocking();
+      if (widget.storage.dpcModeEnabled) {
+        await _stopBlocking();
+      } else {
+        await _showUnblockOptions(profile);
+      }
+    } else if (_tempUnblockProfileId == profile.id) {
+      // Mid-countdown from an earlier temporary unblock — a re-tap means
+      // "I'm done early, lock it back up now."
+      if (!fromNfc) {
+        _showSnack('Scan your NFC tag to re-lock now');
+        return;
+      }
+      await BlockingService.endTempUnblock(profile.id);
+      await _syncState();
     } else {
       if (profile.blockedPackages.isEmpty && !widget.storage.dpcModeEnabled) {
         _showSnack('Add apps to this profile before blocking');
@@ -157,6 +208,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _syncState();
   }
 
+  // Presents the unblock-duration picker for a scheduled profile: 5/10/15 min
+  // while inside its own schedule window (always re-bricks automatically),
+  // plus "Unlimited" outside it (a real stop, with a re-brick nag armed).
+  Future<void> _showUnblockOptions(Profile profile) async {
+    final inSchedule = _isNowInSchedule(profile);
+    final choice = await showModalBottomSheet<int>(
+      context: context,
+      builder: (ctx) => _UnblockOptionsSheet(
+        profileName: profile.name,
+        showUnlimited: !inSchedule,
+      ),
+    );
+    if (choice == null || !mounted) return;
+
+    if (choice == -1) {
+      // Unlimited: a real stop. Nag only if this profile has its own
+      // schedule and stopping happened outside that window.
+      await BlockingService.stopBlocking(
+        profileId: profile.id,
+        armReminder: profile.scheduleEnabled && !inSchedule,
+      );
+      await widget.storage.clearActiveSession();
+    } else {
+      await BlockingService.startTempUnblock(
+        profileId: profile.id,
+        profileName: profile.name,
+        minutes: choice,
+      );
+      // Session stays "active" — it'll silently resume on its own.
+    }
+    await _syncState();
+  }
+
   void _showSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
@@ -189,6 +273,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _SessionBanner(
             isBlocking: _isBlocking,
             activeProfile: _activeProfile,
+            tempUnblockExpiry:
+                _tempUnblockProfileId == _activeProfile?.id ? _tempUnblockExpiry : null,
           ),
           Expanded(
             child: profiles.isEmpty
@@ -313,6 +399,51 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
+// ── Unblock duration picker ──────────────────────────────────────────────────
+
+class _UnblockOptionsSheet extends StatelessWidget {
+  final String profileName;
+  final bool showUnlimited;
+
+  const _UnblockOptionsSheet({required this.profileName, required this.showUnlimited});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Unblock "$profileName"', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              showUnlimited
+                  ? 'Pick how long, or stop until you re-brick it yourself.'
+                  : 'Still inside your schedule — pick how long, it re-bricks automatically.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            for (final minutes in const [5, 10, 15])
+              ListTile(
+                leading: const Icon(Icons.timer_outlined),
+                title: Text('$minutes minutes'),
+                onTap: () => Navigator.pop(context, minutes),
+              ),
+            if (showUnlimited)
+              ListTile(
+                leading: const Icon(Icons.lock_open),
+                title: const Text('Unlimited'),
+                onTap: () => Navigator.pop(context, -1),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ── NFC write modal ──────────────────────────────────────────────────────────
 
 class _NfcWriteDialog extends StatelessWidget {
@@ -346,23 +477,40 @@ class _NfcWriteDialog extends StatelessWidget {
 class _SessionBanner extends StatelessWidget {
   final bool isBlocking;
   final Profile? activeProfile;
+  final DateTime? tempUnblockExpiry;
 
   const _SessionBanner({
     required this.isBlocking,
     required this.activeProfile,
+    this.tempUnblockExpiry,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (!isBlocking) return const SizedBox.shrink();
+    if (!isBlocking && tempUnblockExpiry == null) return const SizedBox.shrink();
     final name = activeProfile?.name ?? '';
-    final label = name.isNotEmpty ? name : 'Blocking active';
+
+    final String label;
+    final IconData icon;
+    final Color color;
+    if (tempUnblockExpiry != null) {
+      final remaining = tempUnblockExpiry!.difference(DateTime.now());
+      final mins = remaining.inSeconds > 0 ? (remaining.inSeconds / 60).ceil() : 0;
+      label = '${name.isNotEmpty ? name : 'Profile'} unblocked — re-bricks in $mins min';
+      icon = Icons.lock_open;
+      color = Theme.of(context).colorScheme.secondary;
+    } else {
+      label = name.isNotEmpty ? name : 'Blocking active';
+      icon = Icons.lock;
+      color = Theme.of(context).colorScheme.primary;
+    }
+
     return Container(
-      color: Theme.of(context).colorScheme.primary,
+      color: color,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          const Icon(Icons.lock, color: Colors.white),
+          Icon(icon, color: Colors.white),
           const SizedBox(width: 12),
           Expanded(
             child: Text(

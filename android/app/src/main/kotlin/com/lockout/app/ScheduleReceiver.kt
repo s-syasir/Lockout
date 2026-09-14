@@ -97,6 +97,11 @@ class ScheduleReceiver : BroadcastReceiver() {
         val profile = FlutterPrefs.getAllScheduledProfiles(ctx).find { it.id == profileId }
         val packages = profile?.packages ?: FlutterPrefs.getProfilePackages(ctx, profileId) ?: return
 
+        // The schedule itself is re-bricking - any manual unlimited-stop reminder
+        // or leftover temp-unblock timer for this profile is now moot.
+        RebrickReminderReceiver.stop(ctx)
+        TempUnblockReceiver.cancelAny(ctx)
+
         NativePrefs.clearMissedNotifs(ctx)
         NativePrefs.savePackages(ctx, packages)
         BlockingService.startBlocking(packages)
