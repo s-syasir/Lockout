@@ -31,13 +31,15 @@ class BootReceiver : BroadcastReceiver() {
             RebrickReminderReceiver.start(ctx, nagProfileId)
         }
 
+        val today = ScheduleReceiver.currentAppDay()
         val profiles = FlutterPrefs.getAllScheduledProfiles(ctx)
         for (profile in profiles) {
             ScheduleReceiver.scheduleAll(ctx, profile)
 
-            if (ScheduleReceiver.isCurrentlyInWindow(
-                    profile.startHH, profile.startMM,
-                    profile.endHH, profile.endMM
+            val todayWindow = profile.days.find { it.day == today }
+            if (todayWindow != null && ScheduleReceiver.isCurrentlyInWindow(
+                    todayWindow.startHH, todayWindow.startMM,
+                    todayWindow.endHH, todayWindow.endMM
                 )
             ) {
                 NativePrefs.savePackages(ctx, profile.packages)

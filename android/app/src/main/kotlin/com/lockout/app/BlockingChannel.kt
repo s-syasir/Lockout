@@ -249,12 +249,20 @@ object BlockingChannel : MethodChannel.MethodCallHandler {
                     result.error("INVALID_ARG", "profileId required", null)
                     return
                 }
-                val startHH = call.argument<Int>("startHH") ?: 0
-                val startMM = call.argument<Int>("startMM") ?: 0
-                val endHH   = call.argument<Int>("endHH")   ?: 0
-                val endMM   = call.argument<Int>("endMM")   ?: 0
-                val profile = ScheduledProfile(profileId, emptyList(), startHH, startMM, endHH, endMM)
-                ScheduleReceiver.scheduleAll(context, profile)
+                @Suppress("UNCHECKED_CAST")
+                val daysArg = call.argument<List<Map<String, Int>>>("days") ?: emptyList()
+                val days = daysArg.map { d ->
+                    DayWindow(
+                        day = d["day"] ?: 1,
+                        startHH = d["startHH"] ?: 0,
+                        startMM = d["startMM"] ?: 0,
+                        endHH = d["endHH"] ?: 0,
+                        endMM = d["endMM"] ?: 0,
+                    )
+                }
+                // Replace whatever was scheduled before, rather than layering on top.
+                ScheduleReceiver.cancel(context, profileId)
+                ScheduleReceiver.scheduleAll(context, ScheduledProfile(profileId, emptyList(), days))
                 result.success(null)
             }
             "cancelSchedule" -> {

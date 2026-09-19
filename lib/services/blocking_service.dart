@@ -165,25 +165,20 @@ class BlockingService {
 
   // ── Schedule ─────────────────────────────────────────────────────────────
 
-  // Set a daily start/stop alarm for a profile.
-  // startHH/startMM: 24-hour start time. endHH/endMM: 24-hour end time.
+  // Sets weekly start/stop alarms for a profile, one pair per day. Each entry
+  // in [days] is {'day': 1-7 (Mon-Sun), 'startHH', 'startMM', 'endHH', 'endMM'}.
+  // Replaces whatever schedule was previously set for this profile.
   static Future<void> setSchedule({
     required String profileId,
-    required int startHH,
-    required int startMM,
-    required int endHH,
-    required int endMM,
+    required List<Map<String, int>> days,
   }) async {
     await _channel.invokeMethod<void>('setSchedule', {
       'profileId': profileId,
-      'startHH': startHH,
-      'startMM': startMM,
-      'endHH': endHH,
-      'endMM': endMM,
+      'days': days,
     });
   }
 
-  // Cancel the daily alarms for a profile.
+  // Cancel all scheduled alarms (every weekday) for a profile.
   static Future<void> cancelSchedule(String profileId) async {
     await _channel.invokeMethod<void>('cancelSchedule', {'profileId': profileId});
   }

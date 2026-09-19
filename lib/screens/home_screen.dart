@@ -81,13 +81,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
-  // Whether "now" falls inside a scheduled profile's own start/end window.
+  // Whether "now" falls inside today's entry in a scheduled profile's
+  // per-day windows (a day with no entry simply isn't scheduled).
   bool _isNowInSchedule(Profile p) {
-    if (!p.scheduleEnabled || p.scheduleStart == null || p.scheduleEnd == null) {
-      return false;
-    }
-    final start = p.scheduleStart!.split(':').map(int.parse).toList();
-    final end = p.scheduleEnd!.split(':').map(int.parse).toList();
+    if (!p.scheduleEnabled) return false;
+    final today = DateTime.now().weekday; // 1=Mon .. 7=Sun
+    final entry = p.schedule.where((d) => d.day == today).firstOrNull;
+    if (entry == null) return false;
+
+    final start = entry.start.split(':').map(int.parse).toList();
+    final end = entry.end.split(':').map(int.parse).toList();
     final now = TimeOfDay.now();
     final nowMins = now.hour * 60 + now.minute;
     final startMins = start[0] * 60 + start[1];

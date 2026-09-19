@@ -16,6 +16,15 @@ class ProfileEditScreen extends StatefulWidget {
   State<ProfileEditScreen> createState() => _ProfileEditScreenState();
 }
 
+// One editable day row's state: whether that weekday is scheduled, and its
+// start/end times (kept even when off, so re-enabling a day restores them).
+class _DayRow {
+  bool enabled;
+  TimeOfDay start;
+  TimeOfDay end;
+  _DayRow({required this.enabled, required this.start, required this.end});
+}
+
 class _ProfileEditScreenState extends State<ProfileEditScreen> {
   late final TextEditingController _nameController;
   late Set<String> _selected;
@@ -24,8 +33,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   String _search = '';
 
   bool _scheduleEnabled = false;
-  TimeOfDay _scheduleStart = const TimeOfDay(hour: 7, minute: 45);
-  TimeOfDay _scheduleEnd = const TimeOfDay(hour: 17, minute: 0);
+  // Index 0 = Monday .. 6 = Sunday (day field is index+1).
+  late List<_DayRow> _days;
 
   bool get _isEditing => widget.profile != null;
 
@@ -36,11 +45,25 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         TextEditingController(text: widget.profile?.name ?? '');
     _selected = Set.from(widget.profile?.blockedPackages ?? []);
 
+    _days = List.generate(
+      7,
+      (i) => _DayRow(
+        enabled: false,
+        start: const TimeOfDay(hour: 7, minute: 45),
+        end: const TimeOfDay(hour: 17, minute: 0),
+      ),
+    );
+
     final p = widget.profile;
     if (p != null) {
       _scheduleEnabled = p.scheduleEnabled;
-      if (p.scheduleStart != null) _scheduleStart = _parseTime(p.scheduleStart!);
-      if (p.scheduleEnd != null) _scheduleEnd = _parseTime(p.scheduleEnd!);
+      for (final entry in p.schedule) {
+        _days[entry.day - 1] = _DayRow(
+          enabled: true,
+          start: _parseTime(entry.start),
+          end: _parseTime(entry.end),
+        );
+      }
     }
 
     _loadApps();
@@ -88,6 +111,14 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       return;
     }
 
+    final activeDays = _days.asMap().entries.where((e) => e.value.enabled).toList();
+    if (_scheduleEnabled && activeDays.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Turn on at least one day, or disable the schedule')),
+      );
+      return;
+    }
+
     if (_scheduleEnabled) {
       final canExact = await BlockingService.canScheduleExactAlarms();
       if (!canExact && mounted) {
@@ -119,24 +150,38 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       }
     }
 
+    final schedule = _scheduleEnabled
+        ? activeDays
+            .map((e) => DaySchedule(
+                  day: e.key + 1,
+                  start: _formatTime(e.value.start),
+                  end: _formatTime(e.value.end),
+                ))
+            .toList()
+        : <DaySchedule>[];
+
     final profileId = widget.profile?.id ?? const Uuid().v4();
     final profile = Profile(
       id: profileId,
       name: name,
       blockedPackages: _selected.toList(),
       scheduleEnabled: _scheduleEnabled,
-      scheduleStart: _scheduleEnabled ? _formatTime(_scheduleStart) : null,
-      scheduleEnd: _scheduleEnabled ? _formatTime(_scheduleEnd) : null,
+      schedule: schedule,
     );
     await widget.storage.upsertProfile(profile);
 
     if (_scheduleEnabled) {
       await BlockingService.setSchedule(
         profileId: profileId,
-        startHH: _scheduleStart.hour,
-        startMM: _scheduleStart.minute,
-        endHH: _scheduleEnd.hour,
-        endMM: _scheduleEnd.minute,
+        days: schedule
+            .map((d) => {
+                  'day': d.day,
+                  'startHH': int.parse(d.start.split(':')[0]),
+                  'startMM': int.parse(d.start.split(':')[1]),
+                  'endHH': int.parse(d.end.split(':')[0]),
+                  'endMM': int.parse(d.end.split(':')[1]),
+                })
+            .toList(),
       );
     } else {
       await BlockingService.cancelSchedule(profileId);
@@ -173,11 +218,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           ),
           _ScheduleSection(
             enabled: _scheduleEnabled,
-            start: _scheduleStart,
-            end: _scheduleEnd,
+            days: _days,
             onEnabledChanged: (v) => setState(() => _scheduleEnabled = v),
-            onStartChanged: (t) => setState(() => _scheduleStart = t),
-            onEndChanged: (t) => setState(() => _scheduleEnd = t),
+            onDayToggled: (i, v) => setState(() => _days[i].enabled = v),
+            onDayStartChanged: (i, t) => setState(() => _days[i].start = t),
+            onDayEndChanged: (i, t) => setState(() => _days[i].end = t),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -234,21 +279,23 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
 // ── Schedule section ─────────────────────────────────────────────────────────
 
+const _dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
 class _ScheduleSection extends StatelessWidget {
   final bool enabled;
-  final TimeOfDay start;
-  final TimeOfDay end;
+  final List<_DayRow> days;
   final ValueChanged<bool> onEnabledChanged;
-  final ValueChanged<TimeOfDay> onStartChanged;
-  final ValueChanged<TimeOfDay> onEndChanged;
+  final void Function(int index, bool value) onDayToggled;
+  final void Function(int index, TimeOfDay value) onDayStartChanged;
+  final void Function(int index, TimeOfDay value) onDayEndChanged;
 
   const _ScheduleSection({
     required this.enabled,
-    required this.start,
-    required this.end,
+    required this.days,
     required this.onEnabledChanged,
-    required this.onStartChanged,
-    required this.onEndChanged,
+    required this.onDayToggled,
+    required this.onDayStartChanged,
+    required this.onDayEndChanged,
   });
 
   String _fmt(TimeOfDay t) =>
@@ -279,40 +326,69 @@ class _ScheduleSection extends StatelessWidget {
           value: enabled,
           onChanged: onEnabledChanged,
           title: const Text('Auto-start on schedule'),
-          subtitle: const Text('Blocking starts and stops at set times daily'),
+          subtitle: const Text('Blocking starts and stops at set times, per day'),
           secondary: const Icon(Icons.schedule),
         ),
         if (enabled) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
             child: Text(
-              'Only an NFC tag can stop blocking during the scheduled window.',
+              'Only an NFC tag can stop blocking during a scheduled window.',
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
                   ?.copyWith(color: Theme.of(context).colorScheme.primary),
             ),
           ),
-          Row(
-            children: [
-              Expanded(
-                child: ListTile(
-                  leading: const Icon(Icons.lock_clock),
-                  title: const Text('Start'),
-                  subtitle: Text(_fmt(start)),
-                  onTap: () => _pickTime(context, start, onStartChanged),
-                ),
+          for (var i = 0; i < 7; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 40,
+                    child: Text(_dayLabels[i], style: Theme.of(context).textTheme.bodyMedium),
+                  ),
+                  Switch(
+                    value: days[i].enabled,
+                    onChanged: (v) => onDayToggled(i, v),
+                  ),
+                  const SizedBox(width: 8),
+                  if (days[i].enabled) ...[
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => _pickTime(
+                          context,
+                          days[i].start,
+                          (t) => onDayStartChanged(i, t),
+                        ),
+                        child: Text(_fmt(days[i].start)),
+                      ),
+                    ),
+                    const Text('–'),
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => _pickTime(
+                          context,
+                          days[i].end,
+                          (t) => onDayEndChanged(i, t),
+                        ),
+                        child: Text(_fmt(days[i].end)),
+                      ),
+                    ),
+                  ] else
+                    Expanded(
+                      child: Text(
+                        'Not scheduled',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: Theme.of(context).colorScheme.outline),
+                      ),
+                    ),
+                ],
               ),
-              Expanded(
-                child: ListTile(
-                  leading: const Icon(Icons.lock_open),
-                  title: const Text('End'),
-                  subtitle: Text(_fmt(end)),
-                  onTap: () => _pickTime(context, end, onEndChanged),
-                ),
-              ),
-            ],
-          ),
+            ),
           const Divider(),
         ],
       ],
